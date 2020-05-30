@@ -14,6 +14,11 @@ const modalLink = document.querySelector('.modal__link');
 const SERVER = 'https://api.themoviedb.org/3';
 const searchForm = document.querySelector('.search__form');
 const searchFormInput = document.querySelector('.search__form-input');
+const preloader = document.querySelector('.preloader');//рука стучащая пальцами
+const dropdown = document.querySelectorAll('.dropdown');//пункты выпадающего меню слева
+const tvShowsHead = document.querySelector('.tv-shows__head');//заголовок результаты поиска для замены при пустом запросе
+const posterWrapper = document.querySelector('.poster__wrapper');//картинка в модальном окне
+const modalContent = document.querySelector('.modal__content');//оформление модального окна
 
 const div = document.getElementsByTagName('div');
 // console.log(div);
@@ -26,6 +31,7 @@ loading.className = 'loading';
 //берем данные по кино с сайта через API
 const DBService = class {
     getData = async (url) => {
+        tvShows.append(loading);//вертушка при запросе на сервер
         const res = await fetch(url);
         if (res.ok) {
             return res.json();
@@ -48,13 +54,30 @@ const DBService = class {
     }
 
     getTvShow = id => this.getData(`${SERVER}/tv/${id}?api_key=${API_KEY}&language=ru-RU`);
+
+    getTopRated = () => this.getData(`${SERVER}/tv/top_rated?api_key=${API_KEY}&language=ru-RU`);
+    getToday = () => this.getData(`${SERVER}/tv/airing_today?api_key=${API_KEY}&language=ru-RU`);
+    getPopular = () => this.getData(`${SERVER}/tv/popular?api_key=${API_KEY}&language=ru-RU`);
+    getWeek = () => this.getData(`${SERVER}/tv/on_the_air?api_key=${API_KEY}&language=ru-RU`);//на следующую неделю
 }
+
+const dbService = new DBService();
 
 // console.log(new DBService().getSearchResult('папа'));
 
-const renderCard = (response) => {
-    // console.log(response);
+const renderCard = (response, target) => {
+    console.log(response);
     tvShowsList.textContent = '';
+
+    if (!response.total_results) {//если в респонсе пусто (false) то есть при пустом запросе ничего не найдено
+        loading.remove();//убрать вертушку
+        tvShowsHead.textContent = "К сожалению по Вашему запросу ничего не найдено...";
+        tvShowsHead.style.cssText = 'color: yellow; border-bottom: 1px dotted red;';
+        return;
+    }
+
+    tvShowsHead.textContent = target ? target.textContent : "Результат поиска";
+    tvShowsHead.style.cssText = 'color: grey;';
 
     response.results.forEach((
         {
@@ -100,22 +123,31 @@ searchForm.addEventListener('submit', event => {
     const value = searchFormInput.value.trim();//получение ввода в поле запроса пользователем c обрезанием пробелов, на случай пустого ввода
     searchFormInput.value = '';//чистим после запроса
     if (value) {
-        tvShows.append(loading);//вывод прелоадера(вертушка) во время загрузки страницы для слабого интернета
-        new DBService().getSearchResult(value).then(renderCard);
+        // tvShows.append(loading);//вывод прелоадера(вертушка) во время загрузки страницы для слабого интернета
+        dbService.getSearchResult(value).then(renderCard);
     }
 });
 
 
 //открытие и закрытие меню слева
+
+const closeDropdown = () => {
+    dropdown.forEach(item => {
+        item.classList.remove('active');
+    })
+}
+
 hamburger.addEventListener('click', () => {
     leftMenu.classList.toggle('openMenu');
     hamburger.classList.toggle('open');
+    closeDropdown();
 });
 
 document.addEventListener('click', (event) => {
     if (!event.target.closest('.left-menu')) {//если клик за пределами меню
         leftMenu.classList.remove('openMenu');
         hamburger.classList.remove('open');
+        closeDropdown();
     }
 });
 
@@ -128,6 +160,23 @@ leftMenu.addEventListener('click', (event) => {
         leftMenu.classList.add('openMenu');
         hamburger.classList.add('open');
     }
+
+    //запросы к API из меню слева
+    if (target.closest('#top-rated')) {
+        dbService.getTopRated().then((response) => renderCard(response, target));
+    }
+
+    if (target.closest('#popular')) {
+        dbService.getPopular().then((response) => renderCard(response, target));
+    }
+
+    if (target.closest('#week')) {
+        dbService.getWeek().then((response) => renderCard(response, target));
+    }
+
+    if (target.closest('#today')) {
+        dbService.getToday().then((response) => renderCard(response, target));
+    }
 });
 
 //открытие модального окна
@@ -136,8 +185,8 @@ tvShowsList.addEventListener('click', event => {
     const target = event.target;
     const card = target.closest('.tv-card');
     if (card) {
-        // console.dir(card);
-        new DBService()//заполнение модального окна
+        preloader.style.display = 'block';//показать руку перебирающую пальцами 
+        new dbService//заполнение модального окна
             .getTvShow(card.id)
             .then(({ poster_path: posterPath,
                 name: title,
@@ -146,8 +195,18 @@ tvShowsList.addEventListener('click', event => {
                 homepage,
                 overview }) => {
 
-                tvCardImg.src = IMG_URL + posterPath;
-                tvCardImg.alt = title;
+                if (posterPath) {//если картинка к сериалу есть...
+                    tvCardImg.src = IMG_URL + posterPath;//вставить картинку сериала в модалку
+                    tvCardImg.alt = title;
+                    posterWrapper.style.display = '';
+                    modalContent.style.paddingLeft = '';
+                } else {
+                    posterWrapper.style.display = 'none';//иначе  скрыть рамку под картинку
+                    modalContent.style.paddingLeft = '25px';//если нет постера - отступ слева уменьшаем до 25 пикселей
+                }
+
+
+
                 modalTitle.textContent = title;
                 // genresList.innerHTML = data.genres.reduce((acc, item) => `${acc} <li>${item.name}</li>`, '');
                 genresList.textContent = '';
@@ -165,6 +224,9 @@ tvShowsList.addEventListener('click', event => {
                 document.body.style.overflow = 'hidden';//скролл убран
                 modal.classList.remove('hide');
             })
+            .finally(() => {
+                preloader.style.display = '';
+            });
 
     }
 });
