@@ -19,6 +19,7 @@ const dropdown = document.querySelectorAll('.dropdown');//пункты выпа�
 const tvShowsHead = document.querySelector('.tv-shows__head');//заголовок результаты поиска для замены при пустом запросе
 const posterWrapper = document.querySelector('.poster__wrapper');//картинка в модальном окне
 const modalContent = document.querySelector('.modal__content');//оформление модального окна
+const pagination = document.querySelector('.pagination');//разбиение на страницы
 
 const div = document.getElementsByTagName('div');
 // console.log(div);
@@ -31,7 +32,7 @@ loading.className = 'loading';
 //берем данные по кино с сайта через API
 const DBService = class {
     getData = async (url) => {
-        tvShows.append(loading);//вертушка при запросе на сервер
+        // tvShows.append(loading);//вертушка при запросе на сервер
         const res = await fetch(url);
         if (res.ok) {
             return res.json();
@@ -50,7 +51,14 @@ const DBService = class {
     }
 
     getSearchResult = query => {
-        return this.getData(`${SERVER}/search/tv?api_key=${API_KEY}&query=${query}&language=ru-RU&page=1`);
+        this.temp = `${SERVER}/search/tv?api_key=${API_KEY}&query=${query}&language=ru-RU&page=1`;
+        return this.getData(this.temp);
+        // return this.getData(`${SERVER}/search/tv?api_key=${API_KEY}&query=${query}&language=ru-RU&page=1`);
+    }
+
+    //пагинация
+    getNextPage = page => {
+        return this.getData(this.temp + '&page=' + page);
     }
 
     getTvShow = id => this.getData(`${SERVER}/tv/${id}?api_key=${API_KEY}&language=ru-RU`);
@@ -66,6 +74,9 @@ const dbService = new DBService();
 // console.log(new DBService().getSearchResult('папа'));
 
 const renderCard = (response, target) => {
+
+    debugger;
+
     console.log(response);
     tvShowsList.textContent = '';
 
@@ -111,11 +122,14 @@ const renderCard = (response, target) => {
         tvShowsList.append(card);
     });
 
+    //пагинация разбиение на страницы
+    pagination.textContent = '';//чистим хвосты прежних запросов
+    if (!target && response.total_pages > 1) {
+        for (let i = 1; i <= response.total_pages; i++) {
+            pagination.innerHTML += `<li><a href="#" class="pages">${i}</a></li>`;
+        }
+    }
 };
-
-
-
-
 
 // обработка запроса поиска вверху форма
 searchForm.addEventListener('submit', event => {
@@ -123,7 +137,7 @@ searchForm.addEventListener('submit', event => {
     const value = searchFormInput.value.trim();//получение ввода в поле запроса пользователем c обрезанием пробелов, на случай пустого ввода
     searchFormInput.value = '';//чистим после запроса
     if (value) {
-        // tvShows.append(loading);//вывод прелоадера(вертушка) во время загрузки страницы для слабого интернета
+        tvShows.append(loading);//вывод прелоадера(вертушка) во время загрузки страницы для слабого интернета
         dbService.getSearchResult(value).then(renderCard);
     }
 });
@@ -135,7 +149,7 @@ const closeDropdown = () => {
     dropdown.forEach(item => {
         item.classList.remove('active');
     })
-}
+};
 
 hamburger.addEventListener('click', () => {
     leftMenu.classList.toggle('openMenu');
@@ -163,19 +177,28 @@ leftMenu.addEventListener('click', (event) => {
 
     //запросы к API из меню слева
     if (target.closest('#top-rated')) {
+        tvShows.append(loading);
         dbService.getTopRated().then((response) => renderCard(response, target));
     }
 
     if (target.closest('#popular')) {
+        tvShows.append(loading);
         dbService.getPopular().then((response) => renderCard(response, target));
     }
 
     if (target.closest('#week')) {
+        tvShows.append(loading);
         dbService.getWeek().then((response) => renderCard(response, target));
     }
 
     if (target.closest('#today')) {
+        tvShows.append(loading);
         dbService.getToday().then((response) => renderCard(response, target));
+    }
+
+    if (target.closest('#search')) {//удаление найденных сериалов с экрана при клике по лупе слева в меню
+        tvShowsList.textContent = '';
+        tvShowsHead.textContent = '';//удаление заголовка Результат поиска
     }
 });
 
@@ -186,7 +209,7 @@ tvShowsList.addEventListener('click', event => {
     const card = target.closest('.tv-card');
     if (card) {
         preloader.style.display = 'block';//показать руку перебирающую пальцами 
-        new dbService//заполнение модального окна
+        dbService//заполнение модального окна
             .getTvShow(card.id)
             .then(({ poster_path: posterPath,
                 name: title,
@@ -257,3 +280,12 @@ const changeImage = event => {
 };
 tvShowsList.addEventListener('mouseover', changeImage);
 tvShowsList.addEventListener('mouseout', changeImage);
+
+pagination.addEventListener('click', event => {
+    event.preventDefault();
+    const target = event.target;
+    if (target.classList.contains('pages')) {//если кликнули по номеру страницы
+        tvShows.append(loading);
+        dbService.getNextPage(target.textContent).then(renderCard);
+    }
+});
